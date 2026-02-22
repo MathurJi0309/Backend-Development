@@ -3,6 +3,81 @@ import ApiError from '../utils/ApiError.js';
 import User from '../models/user.model.js';
 import { uploadOnCloudinary } from '../utils/cloudinary.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
+
+const genrateAccessAndRefreshToken = async (user) => {
+    try {
+
+        const accessToken = user.generateAccessToken();
+        const refreshToken = user.generateRefreshToken();
+        user.refreshToken = refreshToken;
+        await user.save({ validateBeforeSave: false }); // do because we are not updating any field which is required for validation and we want to save refresh token in database
+        return { accessToken, refreshToken };
+    } catch (error) {
+        throw new ApiError("Failed to generate tokens", 500);
+    }
+}
+
+
+const logoutUser = AsyncHandler(async (req, res) => {
+    // get refresh token from cookies
+    // validation check for refresh token
+    // find user by refresh token
+    // if user found then remove refresh token from database
+    // clear cookies and send response to the frontend
+
+   User.findByIdAndUpdate(req.user._id, { $unset: { refreshToken: 1 } }, { new: true }).exec();
+   const cookieOptions = {
+    httpOnly: true,
+    secure: true, // Set to true if using HTTPS
+    sameSite: "Strict", // Adjust based on your needs (e.g., "Lax" or "None")
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+};
+
+    res.clearCookie("refreshToken", cookieOptions);
+    res.clearCookie("accessToken", cookieOptions);
+    return res.status(200).json(new ApiResponse(200, "Logout successful", null));
+})
+
+const loginUser = AsyncHandler(async (req, res) => {
+    // get email/username and password from the frontend
+    // validation check for email/username and password
+    // check user exist or not by email/username
+    // if user exist then compare password
+    // if password is correct then generate access token and refresh token
+    // save refresh token in database and send it using cookies
+    // send response to the frontend with access token and user details except password and refresh token
+
+    const { email, username, password } = req.body;
+    if (!username && !email) {
+        throw new ApiError("Email or username is required", 400);
+    }
+    const user = await User.findOne({ $or: [{ email }, { username }] });
+    if (!user) {
+        throw new ApiError("User not found with this email or username", 404);
+    }
+    const isPasswordValid = await user.isPasswordCorrect(password);
+    if (!isPasswordValid) {
+        throw new ApiError("Invalid credentials", 401);
+    }
+
+    const { accessToken, refreshToken } = await genrateAccessAndRefreshToken(user);
+    // Save refresh token in database and send it using cookies
+    const logedinUser = await User.findById(user._id).select("-password -refreshToken");
+const cookieOptions = {
+    httpOnly: true,
+    secure: true, // Set to true if using HTTPS
+    sameSite: "Strict", // Adjust based on your needs (e.g., "Lax" or "None")
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+};
+
+    // Send response to the frontend with access token and user details except password and refresh token
+    return res
+        .status(200)
+        .cookie("refreshToken", refreshToken, cookieOptions)
+        .cookie("accessToken", accessToken, cookieOptions)
+        .json(new ApiResponse(200, "Login successful", { accessToken, refreshToken, user: logedinUser }));
+});
+
 const registerUser = AsyncHandler(async (req, res) => {
     // get deatil from the frontned
     //validation check 
@@ -28,10 +103,10 @@ const registerUser = AsyncHandler(async (req, res) => {
     const avatarLocalPath = req.files?.avatar[0]?.path;
     // const coverImageLocalPath = req.files?.coverImage[0]?.path;
     let coverImageLocalPath = "";
-    
-    if(req?.files && Array.isArray(req.files?.coverImage) && req.files?.coverImage.length > 0) {
-    coverImageLocalPath = req.files?.coverImage[0]?.path;
-    
+
+    if (req?.files && Array.isArray(req.files?.coverImage) && req.files?.coverImage.length > 0) {
+        coverImageLocalPath = req.files?.coverImage[0]?.path;
+
     }
 
     if (!avatarLocalPath) {
@@ -61,4 +136,4 @@ const registerUser = AsyncHandler(async (req, res) => {
     return res.status(201).json(new ApiResponse(200, "User registered successfully", createdUser));
 })
 
-export { registerUser }; 
+export { registerUser, loginUser, logoutUser };
