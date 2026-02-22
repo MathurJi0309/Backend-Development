@@ -136,4 +136,53 @@ const registerUser = AsyncHandler(async (req, res) => {
     return res.status(201).json(new ApiResponse(200, "User registered successfully", createdUser));
 })
 
+
+const refreshingAccessToken= AsyncHandler(async (req, res) => {
+  try{
+      // get refresh token from cookies
+    // validation check for refresh token
+    // find user by refresh token
+    // if user found then generate new access token and refresh token
+    // save new refresh token in database and send it using cookies
+    // send response to the frontend with new access token
+
+    const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken; // support both cookie and body for refresh token
+    if (!incomingRefreshToken) {
+        throw new ApiError("Refresh token is required", 401);
+    }
+
+    const decoded = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
+    if (!decoded) {
+        throw new ApiError("Invalid refresh token", 401);
+    }
+    const user = await User.findById(decoded._id);
+    if (!user) {
+        throw new ApiError("Invalid refresh token", 401);
+    }
+
+    if(incomingRefreshToken !== user.refreshToken) {
+        throw new ApiError("Refresh token mismatch", 401);
+    }
+    const { accessToken, refreshToken: newRefreshToken } = await genrateAccessAndRefreshToken(user);
+    const cookieOptions = {
+        httpOnly: true,
+        secure: true, // Set to true if using HTTPS
+        sameSite: "Strict", // Adjust based on your needs (e.g., "Lax   or "None")
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    };
+    return res
+        .cookie("refreshToken", newRefreshToken, cookieOptions)
+        .cookie("accessToken", accessToken, cookieOptions)
+        .status(200)
+        .json(new ApiResponse(200, "Access token refreshed successfully", { accessToken }));
+  }catch(error) {
+    if (error.name === "TokenExpiredError") {
+        throw new ApiError("Refresh token expired", 401);
+    } else if (error.name === "JsonWebTokenError") {
+        throw new ApiError("Invalid refresh token", 401);
+    } else {
+        throw new ApiError("Failed to refresh access token", 500);
+    }
+  }
+})
 export { registerUser, loginUser, logoutUser };
