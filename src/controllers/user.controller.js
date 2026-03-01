@@ -25,13 +25,13 @@ const logoutUser = AsyncHandler(async (req, res) => {
     // if user found then remove refresh token from database
     // clear cookies and send response to the frontend
 
-   User.findByIdAndUpdate(req.user._id, { $unset: { refreshToken: 1 } }, { new: true }).exec();
-   const cookieOptions = {
-    httpOnly: true,
-    secure: true, // Set to true if using HTTPS
-    sameSite: "Strict", // Adjust based on your needs (e.g., "Lax" or "None")
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-};
+    User.findByIdAndUpdate(req.user._id, { $unset: { refreshToken: 1 } }, { new: true }).exec();
+    const cookieOptions = {
+        httpOnly: true,
+        secure: true, // Set to true if using HTTPS
+        sameSite: "Strict", // Adjust based on your needs (e.g., "Lax" or "None")
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    };
 
     res.clearCookie("refreshToken", cookieOptions);
     res.clearCookie("accessToken", cookieOptions);
@@ -63,12 +63,12 @@ const loginUser = AsyncHandler(async (req, res) => {
     const { accessToken, refreshToken } = await genrateAccessAndRefreshToken(user);
     // Save refresh token in database and send it using cookies
     const logedinUser = await User.findById(user._id).select("-password -refreshToken");
-const cookieOptions = {
-    httpOnly: true,
-    secure: true, // Set to true if using HTTPS
-    sameSite: "Strict", // Adjust based on your needs (e.g., "Lax" or "None")
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-};
+    const cookieOptions = {
+        httpOnly: true,
+        secure: true, // Set to true if using HTTPS
+        sameSite: "Strict", // Adjust based on your needs (e.g., "Lax" or "None")
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    };
 
     // Send response to the frontend with access token and user details except password and refresh token
     return res
@@ -137,52 +137,142 @@ const registerUser = AsyncHandler(async (req, res) => {
 })
 
 
-const refreshingAccessToken= AsyncHandler(async (req, res) => {
-  try{
-      // get refresh token from cookies
-    // validation check for refresh token
-    // find user by refresh token
-    // if user found then generate new access token and refresh token
-    // save new refresh token in database and send it using cookies
-    // send response to the frontend with new access token
+const refreshingAccessToken = AsyncHandler(async (req, res) => {
+    try {
+        // get refresh token from cookies
+        // validation check for refresh token
+        // find user by refresh token
+        // if user found then generate new access token and refresh token
+        // save new refresh token in database and send it using cookies
+        // send response to the frontend with new access token
 
-    const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken; // support both cookie and body for refresh token
-    if (!incomingRefreshToken) {
-        throw new ApiError("Refresh token is required", 401);
-    }
+        const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken; // support both cookie and body for refresh token
+        if (!incomingRefreshToken) {
+            throw new ApiError("Refresh token is required", 401);
+        }
 
-    const decoded = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
-    if (!decoded) {
-        throw new ApiError("Invalid refresh token", 401);
-    }
-    const user = await User.findById(decoded._id);
-    if (!user) {
-        throw new ApiError("Invalid refresh token", 401);
-    }
+        const decoded = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
+        if (!decoded) {
+            throw new ApiError("Invalid refresh token", 401);
+        }
+        const user = await User.findById(decoded._id);
+        if (!user) {
+            throw new ApiError("Invalid refresh token", 401);
+        }
 
-    if(incomingRefreshToken !== user.refreshToken) {
-        throw new ApiError("Refresh token mismatch", 401);
+        if (incomingRefreshToken !== user.refreshToken) {
+            throw new ApiError("Refresh token mismatch", 401);
+        }
+        const { accessToken, refreshToken: newRefreshToken } = await genrateAccessAndRefreshToken(user);
+        const cookieOptions = {
+            httpOnly: true,
+            secure: true, // Set to true if using HTTPS
+            sameSite: "Strict", // Adjust based on your needs (e.g., "Lax   or "None")
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        };
+        return res
+            .cookie("refreshToken", newRefreshToken, cookieOptions)
+            .cookie("accessToken", accessToken, cookieOptions)
+            .status(200)
+            .json(new ApiResponse(200, "Access token refreshed successfully", { accessToken }));
+    } catch (error) {
+        if (error.name === "TokenExpiredError") {
+            throw new ApiError("Refresh token expired", 401);
+        } else if (error.name === "JsonWebTokenError") {
+            throw new ApiError("Invalid refresh token", 401);
+        } else {
+            throw new ApiError("Failed to refresh access token", 500);
+        }
     }
-    const { accessToken, refreshToken: newRefreshToken } = await genrateAccessAndRefreshToken(user);
-    const cookieOptions = {
-        httpOnly: true,
-        secure: true, // Set to true if using HTTPS
-        sameSite: "Strict", // Adjust based on your needs (e.g., "Lax   or "None")
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    };
-    return res
-        .cookie("refreshToken", newRefreshToken, cookieOptions)
-        .cookie("accessToken", accessToken, cookieOptions)
-        .status(200)
-        .json(new ApiResponse(200, "Access token refreshed successfully", { accessToken }));
-  }catch(error) {
-    if (error.name === "TokenExpiredError") {
-        throw new ApiError("Refresh token expired", 401);
-    } else if (error.name === "JsonWebTokenError") {
-        throw new ApiError("Invalid refresh token", 401);
-    } else {
-        throw new ApiError("Failed to refresh access token", 500);
-    }
-  }
 })
-export { registerUser, loginUser, logoutUser, refreshingAccessToken };
+
+const changeCurrentPassword = AsyncHandler(async (req, res) => {
+    // get old password and new password from the frontend
+    // validation check for old password and new password
+    // find user by id from the request object
+    // compare old password with the password in database
+    // if old password is correct then update new password in database
+    // send response to the frontend
+
+    const { oldPassword, newPassword } = req.body;
+    if (!oldPassword || !newPassword) {
+        throw new ApiError("Old password and new password are required", 400);
+    }
+    const user = await User.findById(req.user._id);
+    if (!user) {
+        throw new ApiError("User not found", 404);
+    }
+    const isOldPasswordValid = await user.isPasswordCorrect(oldPassword);
+    if (!isOldPasswordValid) {
+        throw new ApiError("Old password is incorrect", 401);
+    }
+    user.password = newPassword;
+    await user.save({ validateBeforeSave: true });
+    return res.status(200).json(new ApiResponse(200, "Password changed successfully", {}));
+})
+
+
+const getCurrentUserDetails = AsyncHandler(async (req, res) => {
+    // find user by id from the request object
+    // send response to the frontend with user details except password and refresh token
+
+
+    return res.status(200).json(new ApiResponse(200, "User details fetched successfully", req.user));
+})
+
+const updateCurrentUserDetails = AsyncHandler(async (req, res) => {
+    const { fullName, email } = req.body;
+    if (!fullName || !email) {
+        throw new ApiError("All fields are required", 400);
+    }
+
+
+    const user = await User.findByIdAndUpdate(req.user._id, {
+        $set: {
+            fullName,
+            email,
+        }
+    }, { new: true }).select("-password -refreshToken");
+    if (!user) {
+        throw new ApiError("User not found", 404);
+    }
+
+    return res.status(200).json(new ApiResponse(200, "User details updated successfully", user));
+})
+
+
+
+const updateUserAvatar = AsyncHandler(async (req, res) => {
+    const avatarLocalPath = req.files?.path;
+    if (!avatarLocalPath) {
+        throw new ApiError("Avatar image is required", 400);
+    }
+    const avatar = await uploadOnCloudinary(avatarLocalPath);
+    if (!avatar.url) {
+        throw new ApiError("Failed to upload avatar image", 500);
+    }
+    const user = await User.findByIdAndUpdate(req.user._id, { avatar: avatar.url }, { new: true }).select("-password -refreshToken");
+    if (!user) {
+        throw new ApiError("User not found", 404);
+    }
+    return res.status(200).json(new ApiResponse(200, "User avatar updated successfully", user));
+})
+
+
+const updateUserCoverImage = AsyncHandler(async (req, res) => {
+    const coverImageLocalPath = req.files?.path;
+    if (!coverImageLocalPath) {
+        throw new ApiError("Cover image is required", 400);
+    }
+    const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+    if (!coverImage.url) {
+        throw new ApiError("Failed to upload cover image", 500);
+    }
+    const user = await User.findByIdAndUpdate(req.user._id, { coverImage: coverImage.url }, { new: true }).select("-password -refreshToken");
+    if (!user) {
+        throw new ApiError("User not found", 404);
+    }
+    return res.status(200).json(new ApiResponse(200, "User cover image updated successfully", user));
+})
+
+export { registerUser, loginUser, logoutUser, refreshingAccessToken, changeCurrentPassword, getCurrentUserDetails, updateCurrentUserDetails, updateUserAvatar, updateUserCoverImage };
